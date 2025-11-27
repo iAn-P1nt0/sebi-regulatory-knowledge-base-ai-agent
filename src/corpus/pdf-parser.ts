@@ -81,20 +81,6 @@ export function countTokens(text: string): number {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Regex patterns for SEBI document structure.
- */
-const SECTION_PATTERNS = {
-  /** Matches "Chapter 1: Title" or "Chapter I. Title" */
-  chapter: /^(?:Chapter)\s+(\d+|[IVXLCDM]+)[:\.\s]+([^\n]+)/gim,
-  /** Matches "1.2 Title" or "1.2: Title" */
-  section: /^(\d+\.\d+)[:\.\s]+([^\n]+)/gm,
-  /** Matches "1.2.3 Title" or "1.2.3: Title" */
-  subSection: /^(\d+\.\d+\.\d+)[:\.\s]+([^\n]+)/gm,
-  /** Matches "(a) Title" or "(i) Title" for alphabetic/roman sub-items */
-  alphabetic: /^\(([a-z]|[ivxlcdm]+)\)[:\.\s]+([^\n]+)/gim,
-};
-
-/**
  * Metadata extracted from SEBI circular header.
  */
 interface CircularMetadata {
@@ -124,7 +110,7 @@ function extractCircularMetadata(text: string): CircularMetadata {
 
   // Pattern for date: various formats
   const datePatterns = [
-    /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/, // DD/MM/YYYY or DD-MM-YYYY
+    /(\d{1,2})[/-](\d{1,2})[/-](\d{4})/, // DD/MM/YYYY or DD-MM-YYYY
     /(\w+)\s+(\d{1,2}),?\s+(\d{4})/, // Month DD, YYYY
     /(\d{1,2})\s+(\w+)\s+(\d{4})/, // DD Month YYYY
   ];
@@ -227,7 +213,7 @@ export function extractSections(text: string): Section[] {
     const trimmedLine = line.trim();
 
     // Check for chapter
-    const chapterMatch = trimmedLine.match(/^Chapter\s+(\d+|[IVXLCDM]+)[:\.\s]+(.+)/i);
+    const chapterMatch = trimmedLine.match(/^Chapter\s+(\d+|[IVXLCDM]+)[:.]?\s+(.+)/i);
     if (chapterMatch) {
       flushContent();
       currentChapter = {
@@ -244,7 +230,7 @@ export function extractSections(text: string): Section[] {
     }
 
     // Check for section (e.g., "2.3 Title")
-    const sectionMatch = trimmedLine.match(/^(\d+\.\d+)[:\.\s]+(.+)/);
+    const sectionMatch = trimmedLine.match(/^(\d+\.\d+)[:.]?\s+(.+)/);
     if (sectionMatch && !trimmedLine.match(/^\d+\.\d+\.\d+/)) {
       flushContent();
       currentSection = {
@@ -264,7 +250,7 @@ export function extractSections(text: string): Section[] {
     }
 
     // Check for sub-section (e.g., "2.3.1 Title")
-    const subSectionMatch = trimmedLine.match(/^(\d+\.\d+\.\d+)[:\.\s]+(.+)/);
+    const subSectionMatch = trimmedLine.match(/^(\d+\.\d+\.\d+)[:.]?\s+(.+)/);
     if (subSectionMatch) {
       flushContent();
       currentSubSection = {
@@ -294,16 +280,6 @@ export function extractSections(text: string): Section[] {
   flushContent();
 
   return sections;
-}
-
-/**
- * Build section hierarchy path as string array.
- *
- * @param sections - Flat list of section titles.
- * @returns Hierarchy path array.
- */
-function buildHierarchy(sections: string[]): string[] {
-  return sections.filter(Boolean);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -548,12 +524,15 @@ export function chunkDocument(document: SEBIDocument, options: ChunkOptions = {}
   // Flatten sections and chunk each
   const contentBlocks = flattenSections(sections);
 
+  // If all blocks are below minTokens, include them anyway
+  const allBlocksBelowMin = contentBlocks.every((b) => countTokens(b.content) < minTokens);
+
   for (const block of contentBlocks) {
     const blockTokens = countTokens(block.content);
 
     if (blockTokens <= maxTokens) {
       // Block fits in a single chunk
-      if (blockTokens >= minTokens || contentBlocks.length === 1) {
+      if (blockTokens >= minTokens || contentBlocks.length === 1 || allBlocksBelowMin) {
         const chunk: SEBIChunk = {
           chunk_id: `${document.id}-chunk-${chunkIndex}`,
           document_id: document.id,
