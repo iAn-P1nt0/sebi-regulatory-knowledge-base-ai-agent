@@ -95,6 +95,40 @@ class MockQdrantClient {
     this.collections.delete(name);
   }
 
+  async delete(
+    name: string,
+    params: {
+      points?: Array<string | number>;
+      filter?: Record<string, unknown>;
+      wait?: boolean;
+    },
+  ): Promise<void> {
+    const collection = this.ensureCollection(name);
+    const ids = new Set<string | number>();
+
+    if (Array.isArray(params.points)) {
+      params.points.forEach((id) => ids.add(id));
+    }
+
+    if (params.filter) {
+      for (const point of collection.points.values()) {
+        if (this.matchesFilter(point.payload, params.filter)) {
+          ids.add(point.id);
+        }
+      }
+    }
+
+    ids.forEach((id) => collection.points.delete(id));
+  }
+
+  async count(name: string, params: { filter?: Record<string, unknown> } = {}): Promise<{ count: number }> {
+    const collection = this.ensureCollection(name);
+    const filtered = Array.from(collection.points.values()).filter((point) =>
+      this.matchesFilter(point.payload, params.filter),
+    );
+    return { count: filtered.length };
+  }
+
   private ensureCollection(name: string) {
     const collection = this.collections.get(name);
     if (!collection) {
@@ -242,5 +276,35 @@ describe('QdrantManager', () => {
     await manager.initializeCollection();
     await manager.deleteCollection();
     await expect(manager.getCollectionInfo()).rejects.toThrow();
+  });
+
+  it('lists chunks and applies filters', async () => {
+    await manager.initializeCollection();
+    const chunkA = withMetadata(createChunk('1', 'TER disclosure rules'), createMetadata());
+    const chunkB = withMetadata(
+      createChunk('2', 'REIT guidance for disclosures'),
+      createMetadata({ category: 'reits', circular_id: 'SEBI/HO/IMD/2024/010' }),
+    );
+
+    await manager.upsertChunks([chunkA, chunkB], [createEmbedding(0.9), createEmbedding(0.4)]);
+
+    const allChunks = await manager.listChunks();
+    expect(allChunks).toHaveLength(2);
+
+    const filtered = await manager.listChunks({ category: 'reits' });
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].document.circular_id).toBe('SEBI/HO/IMD/2024/010');
+  });
+
+  it('deletes chunks by circular id', async () => {
+    await manager.initializeCollection();
+    const chunk = withMetadata(createChunk('3', 'NAV policy update'), createMetadata());
+    await manager.upsertChunks([chunk], [createEmbedding(1)]);
+
+    const deleted = await manager.deleteChunksByCircularId('SEBI/HO/IMD/2024/001');
+    expect(deleted).toBeGreaterThan(0);
+
+    const remaining = await manager.listChunks();
+    expect(remaining).toHaveLength(0);
   });
 });

@@ -347,6 +347,9 @@ export async function parseSEBIPDF(pdfBuffer: Buffer): Promise<SEBIDocument> {
     ? metadata.circularId.replace(/\//g, '-').toLowerCase()
     : `sebi-doc-${Date.now()}`;
 
+  const slug = metadata.circularId?.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
+  const fallbackUrl = slug ? `https://www.sebi.gov.in/circulars/${slug}.pdf` : 'https://www.sebi.gov.in/';
+
   const document: SEBIDocument = {
     id,
     circular_id: metadata.circularId ?? `UNKNOWN-${Date.now()}`,
@@ -354,7 +357,7 @@ export async function parseSEBIPDF(pdfBuffer: Buffer): Promise<SEBIDocument> {
     date: metadata.date ?? new Date(),
     category,
     content: cleanedText,
-    url: '',
+    url: fallbackUrl,
     metadata: {
       pageCount: pdfData.numpages,
       pdfInfo: pdfData.info,

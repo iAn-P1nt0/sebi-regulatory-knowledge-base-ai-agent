@@ -20,6 +20,7 @@ export interface SearchFilters {
   dateFrom?: Date;
   dateTo?: Date;
   chapter?: string;
+  circularId?: string;
 }
 
 export interface SearchResult {
@@ -231,6 +232,43 @@ export class QdrantManager {
     await this.client.deleteCollection(this.collectionName);
   }
 
+  /**
+   * List all chunks currently stored in the collection.
+   */
+  async listChunks(filters?: SearchFilters): Promise<SearchResult[]> {
+    return this.fetchAllPoints(filters);
+  }
+
+  /**
+   * Remove all chunks associated with a SEBI circular identifier.
+   */
+  async deleteChunksByCircularId(circularId: string): Promise<number> {
+    if (!circularId?.trim()) {
+      throw new Error('circularId is required to delete chunks');
+    }
+
+    const filter: QdrantFilter = {
+      must: [
+        {
+          key: 'circular_id',
+          match: { value: circularId },
+        },
+      ],
+    };
+
+    const countResult = await this.client.count(this.collectionName, {
+      filter,
+      exact: true,
+    });
+
+    await this.client.delete(this.collectionName, {
+      wait: true,
+      filter,
+    });
+
+    return Number(countResult.count ?? 0);
+  }
+
   // ───────────────────────────────────────────────────────────────────────────
   // Internal helpers
   // ───────────────────────────────────────────────────────────────────────────
@@ -319,6 +357,13 @@ export class QdrantManager {
       must.push({
         key: 'chapter',
         match: { value: filters.chapter },
+      });
+    }
+
+    if (filters.circularId) {
+      must.push({
+        key: 'circular_id',
+        match: { value: filters.circularId },
       });
     }
 
