@@ -98,13 +98,13 @@ export class CorpusIngestion {
       return chunk.embedding;
     });
 
-    const upserted = await this.qdrant.upsertChunks(embeddedChunks, embeddings);
+    await this.qdrant.upsertChunks(embeddedChunks, embeddings);
 
     const summary: IngestionSummary = {
       pdfPath: absolutePath,
       circularId: merged.circular_id,
       chunkCount: embeddedChunks.length,
-      embeddingCount: upserted,
+      embeddingCount: embeddings.length,
       durationMs: Date.now() - start,
     };
 
